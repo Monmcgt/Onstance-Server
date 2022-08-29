@@ -44,7 +44,7 @@ public class SocketServer {
                         System.out.println("Client connection failed: " + socket.getInetAddress());
                     }
                 } catch (Exception e) {
-                    throw new RuntimeException(e);
+                    e.printStackTrace();
                 }
             }
         }
