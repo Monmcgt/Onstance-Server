@@ -118,17 +118,6 @@ public class ClientHandler extends Thread {
     @Override
     public void run() {
         this.executorService.submit(() -> {
-            while (true) {
-                boolean connected = this.socket.isConnected() && !this.socket.isClosed();
-                if (!connected) {
-                    this.disconnect();
-                } else {
-//                    System.out.println("Client " + this.instance.getId() + " is connected");
-                }
-                Thread.sleep(1000);
-            }
-        });
-        this.executorService.submit(() -> {
             while (this.socket.isConnected()) {
                 try {
                     String string = this.objectInputStream.readUTF();
@@ -141,13 +130,13 @@ public class ClientHandler extends Thread {
         this.executorService.submit(() -> {
             do {
                 try {
-                    this.timeCountHelper = TimeCountHelper.newInstance(5);
+                    this.timeCountHelper = TimeCountHelper.newInstance(10);
                     this.isKeepAlive = false;
                     this.keepAliveNumber = Utils.generateRandomKeepAliveNumber();
                     JsonObject keepAliveJsonObject = Utils.getKeepAliveJsonObject(this.keepAliveNumber);
                     this.objectOutputStream.writeUTF(keepAliveJsonObject.toString());
                     // true if flushing is successful
-                    boolean b = Utils.flushTimeOut(this.objectOutputStream, 10000, this);
+                    boolean b = Utils.flushTimeOut(this.objectOutputStream, 2500, this);
                     if (!b) {
                         // flush timeout
                         this.disconnect();
@@ -157,12 +146,12 @@ public class ClientHandler extends Thread {
                         if (this.isKeepAlive) {
                             break;
                         }
-                        Thread.sleep(1000);
+                        Thread.sleep(500);
                     }
                     if (!this.isKeepAlive) {
                         this.disconnect();
                     } else {
-                        Thread.sleep(3000);
+                        Thread.sleep(2500);
                     }
                 } catch (InterruptedException | IOException e) {
                     throw new RuntimeException(e);
