@@ -20,6 +20,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 public class ClientHandler extends Thread {
+    public static final long KEEP_ALIVE_DELAY = 5000;
+
     private final Socket socket;
     private final ExecutorService executorService;
     private final InstanceList instanceList;
@@ -57,12 +59,7 @@ public class ClientHandler extends Thread {
 
     public void init() {
         try {
-            /*
-                {
-                    "type": "init",
-                    "uid": "123456789abcdef"
-                }
-            */
+            /* {"type": "init", "uid": "123456789abcdef"} */
             String json = this.objectInputStream.readUTF();
             JsonObject jsonObjectInit = Var.JSON_PARSER.parse(json).getAsJsonObject();
             String type = jsonObjectInit.get("type").getAsString();
@@ -100,6 +97,7 @@ public class ClientHandler extends Thread {
                 jsonObject.addProperty("success", true);
                 this.objectOutputStream.writeUTF(jsonObject.toString());
                 this.objectOutputStream.flush();
+                System.out.println("[Onstance] New client connected: " + this.socket.getInetAddress() + " (" + this.uid + ")");
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -151,7 +149,7 @@ public class ClientHandler extends Thread {
                     if (!this.isKeepAlive) {
                         this.disconnect();
                     } else {
-                        Thread.sleep(2500);
+                        Thread.sleep(KEEP_ALIVE_DELAY);
                     }
                 } catch (InterruptedException | IOException e) {
                     throw new RuntimeException(e);
@@ -178,13 +176,16 @@ public class ClientHandler extends Thread {
         this.isKeepAlive = true;
     }
 
-    public void disconnect() {
+    public synchronized void disconnect() {
         try {
             this.socket.close();
-            this.instanceList.removeInstance(this.instance);
-            System.out.println("Client disconnected: " + this.socket.getRemoteSocketAddress());
             Thread.currentThread().interrupt();
-            System.out.println("Instance size: " + this.instanceList.getInstances().size());
+            if (this.instanceList.isInstanceExists(this.instance)) {
+                this.instanceList.removeInstance(this.instance);
+//                System.out.println("Client disconnected: " + this.socket.getRemoteSocketAddress());
+//                System.out.println("Instance size: " + this.instanceList.getInstances().size());
+                System.out.println("[Onstance] Client disconnected: " + this.socket.getInetAddress() + " (" + this.uid + ")");
+            }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
