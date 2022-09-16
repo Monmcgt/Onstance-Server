@@ -27,10 +27,6 @@ public class InstanceList {
         this.getInstances().remove(instance);
     }
 
-    public synchronized boolean isInstanceExists(Instance instance) {
-        return this.getInstances().contains(instance);
-    }
-
     public synchronized List<Instance> getInstances() {
         return this.instances;
     }

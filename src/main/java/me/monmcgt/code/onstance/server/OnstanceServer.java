@@ -14,6 +14,7 @@ public class OnstanceServer {
     }
 
     public void start() {
+        System.out.println("Starting Onstance Server on port " + this.port + "...");
         SocketServer socketServer = new SocketServer(this.port);
         socketServer.start();
     }

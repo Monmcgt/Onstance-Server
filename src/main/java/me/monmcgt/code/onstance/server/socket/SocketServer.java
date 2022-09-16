@@ -39,10 +39,9 @@ public class SocketServer {
                     ClientHandler clientHandler = new ClientHandler(socket, executorService, instanceList);
                     boolean running = clientHandler.startRunning();
                     if (running) {
-//                        System.out.println("Client connected: " + socket.getInetAddress());
+                        System.out.println("Client connected: " + socket.getInetAddress());
                     } else {
-//                        System.out.println("Client connection failed: " + socket.getInetAddress());
-                        System.out.println("[Onstance] Client connection failed: " + socket.getInetAddress());
+                        System.out.println("Client connection failed: " + socket.getInetAddress());
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
