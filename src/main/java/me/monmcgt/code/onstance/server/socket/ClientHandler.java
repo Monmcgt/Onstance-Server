@@ -1,9 +1,11 @@
 package me.monmcgt.code.onstance.server.socket;
 
-import com.google.gson.JsonObject;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import me.monmcgt.code.onstance.packet.Packet;
+import me.monmcgt.code.onstance.packet.impl.onstance.InitPacket;
+import me.monmcgt.code.onstance.packet.impl.onstance.KeepAlivePacket;
 import me.monmcgt.code.onstance.server.Var;
 import me.monmcgt.code.onstance.server.helper.TimeCountHelper;
 import me.monmcgt.code.onstance.server.storage.InstanceList;
@@ -20,8 +22,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 public class ClientHandler extends Thread {
-    public static final long KEEP_ALIVE_DELAY = 5000;
-
     private final Socket socket;
     private final ExecutorService executorService;
     private final InstanceList instanceList;
@@ -59,32 +59,49 @@ public class ClientHandler extends Thread {
 
     public void init() {
         try {
-            /* {"type": "init", "uid": "123456789abcdef"} */
-            String json = this.objectInputStream.readUTF();
-            JsonObject jsonObjectInit = Var.JSON_PARSER.parse(json).getAsJsonObject();
-            String type = jsonObjectInit.get("type").getAsString();
-            if (!type.equals("init")) {
-                throw new RuntimeException("Invalid type: " + type);
+            /*
+                {
+                    "type": "init",
+                    "uid": "123456789abcdef"
+                }
+            */
+//            String json = this.objectInputStream.readUTF();
+            /*JsonObject jsonObjectInit = Var.JSON_PARSER.parse(json).getAsJsonObject();
+            String type = jsonObjectInit.get("type").getAsString();*/
+//            Packet packet = Packet.deserialize(json);
+            Packet packet = (Packet) this.objectInputStream.readObject();
+//            if (packet.getType().equals(InitPacket.builder().build().getType())) {
+            if (!(packet instanceof InitPacket)) {
+//                throw new RuntimeException("Invalid type: " + type);
+                throw new RuntimeException("Invalid type: " + packet.getClass().getName());
             }
-            String uid = jsonObjectInit.get("uid").getAsString();
+            InitPacket initPacket = (InitPacket) packet;
+//            String uid = jsonObjectInit.get("uid").getAsString();
+            String uid = initPacket.getUid();
             int length = uid.length();
             if (this.instanceList.isAlreadyExists(uid)) {
                 this.isInstanceExists = true;
-                JsonObject jsonObject = new JsonObject();
+                /*JsonObject jsonObject = new JsonObject();
                 jsonObject.addProperty("type", "init");
                 jsonObject.addProperty("success", false);
                 jsonObject.addProperty("message", "Instance already exists");
-                this.objectOutputStream.writeUTF(jsonObject.toString());
+                this.objectOutputStream.writeUTF(jsonObject.toString());*/
+                InitPacket initPacket1 = InitPacket.builder().success(false).message("Instance already exists").build();
+//                this.objectOutputStream.writeUTF(initPacket1.serialize());
+                this.objectOutputStream.writeObject(initPacket1);
                 this.objectOutputStream.flush();
                 this.disconnect();
             } else if (length > 50) {
                 // the instance is not actually exists but the length is too long
                 this.isInstanceExists = true;
-                JsonObject jsonObject = new JsonObject();
+                /*JsonObject jsonObject = new JsonObject();
                 jsonObject.addProperty("type", "init");
                 jsonObject.addProperty("success", false);
                 jsonObject.addProperty("message", "Instance uid is too long (max 50)");
-                this.objectOutputStream.writeUTF(jsonObject.toString());
+                this.objectOutputStream.writeUTF(jsonObject.toString());*/
+                InitPacket initPacket1 = InitPacket.builder().success(false).message("Instance uid is too long (max 50)").build();
+//                this.objectOutputStream.writeUTF(initPacket1.serialize());
+                this.objectOutputStream.writeObject(initPacket1);
                 this.objectOutputStream.flush();
                 this.disconnect();
             } else {
@@ -92,14 +109,16 @@ public class ClientHandler extends Thread {
                 this.isInstanceExists = false;
                 this.instance = InstanceList.Instance.builder().id(uid).build();
                 this.instanceList.addInstance(this.instance);
-                JsonObject jsonObject = new JsonObject();
+                /*JsonObject jsonObject = new JsonObject();
                 jsonObject.addProperty("type", "init");
                 jsonObject.addProperty("success", true);
-                this.objectOutputStream.writeUTF(jsonObject.toString());
+                this.objectOutputStream.writeUTF(jsonObject.toString());*/
+                InitPacket initPacket1 = InitPacket.builder().success(true).build();
+//                this.objectOutputStream.writeUTF(initPacket1.serialize());
+                this.objectOutputStream.writeObject(initPacket1);
                 this.objectOutputStream.flush();
-                System.out.println("[Onstance] New client connected: " + this.socket.getInetAddress() + " (" + this.uid + ")");
             }
-        } catch (IOException e) {
+        } catch (IOException | ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
     }
@@ -118,9 +137,9 @@ public class ClientHandler extends Thread {
         this.executorService.submit(() -> {
             while (this.socket.isConnected()) {
                 try {
-                    String string = this.objectInputStream.readUTF();
-                    this.handleInputObject(string);
-                } catch (IOException e) {
+                    Object object = this.objectInputStream.readObject();
+                    this.handleInputObject(object);
+                } catch (IOException | ClassNotFoundException e) {
                     throw new RuntimeException(e);
                 }
             }
@@ -131,8 +150,7 @@ public class ClientHandler extends Thread {
                     this.timeCountHelper = TimeCountHelper.newInstance(10);
                     this.isKeepAlive = false;
                     this.keepAliveNumber = Utils.generateRandomKeepAliveNumber();
-                    JsonObject keepAliveJsonObject = Utils.getKeepAliveJsonObject(this.keepAliveNumber);
-                    this.objectOutputStream.writeUTF(keepAliveJsonObject.toString());
+                    this.objectOutputStream.writeObject(Utils.getKeepAlivePacket(this.keepAliveNumber));
                     // true if flushing is successful
                     boolean b = Utils.flushTimeOut(this.objectOutputStream, 2500, this);
                     if (!b) {
@@ -149,7 +167,7 @@ public class ClientHandler extends Thread {
                     if (!this.isKeepAlive) {
                         this.disconnect();
                     } else {
-                        Thread.sleep(KEEP_ALIVE_DELAY);
+                        Thread.sleep(2500);
                     }
                 } catch (InterruptedException | IOException e) {
                     throw new RuntimeException(e);
@@ -158,15 +176,24 @@ public class ClientHandler extends Thread {
         });
     }
 
-    public void handleInputObject(String string) {
+    public void handleInputObject(Object object) {
         for (Consumer<Object> consumer : this.objectInputStreamAcceptorThreads) {
-            consumer.accept(string);
+            consumer.accept(object);
         }
-        JsonObject jsonObject = Var.JSON_PARSER.parse(string).getAsJsonObject();
+        /*JsonObject jsonObject = Var.JSON_PARSER.parse(object).getAsJsonObject();
         String type = jsonObject.get("type").getAsString();
         if (type.equals("keep-alive")) {
             String verifyCode = jsonObject.get("verify-code").getAsString();
             if (verifyCode.equals(this.keepAliveNumber)) {
+                this.extendKeepAlive();
+            }
+        }*/
+//        Packet packet = Var.GSON.fromJson(object, Packet.class);
+//        Packet packet = Packet.deserialize(object);
+        Packet packet = (Packet) object;
+        if (packet instanceof KeepAlivePacket) {
+            KeepAlivePacket keepAlivePacket = (KeepAlivePacket) packet;
+            if (keepAlivePacket.getVerifyCode().equals(this.keepAliveNumber)) {
                 this.extendKeepAlive();
             }
         }
@@ -176,27 +203,28 @@ public class ClientHandler extends Thread {
         this.isKeepAlive = true;
     }
 
-    public synchronized void disconnect() {
+    public void disconnect() {
         try {
             this.socket.close();
+            this.instanceList.removeInstance(this.instance);
+            System.out.println("Client disconnected: " + this.socket.getRemoteSocketAddress());
             Thread.currentThread().interrupt();
-            if (this.instanceList.isInstanceExists(this.instance)) {
-                this.instanceList.removeInstance(this.instance);
-//                System.out.println("Client disconnected: " + this.socket.getRemoteSocketAddress());
-//                System.out.println("Instance size: " + this.instanceList.getInstances().size());
-                System.out.println("[Onstance] Client disconnected: " + this.socket.getInetAddress() + " (" + this.uid + ")");
-            }
+            System.out.println("Instance size: " + this.instanceList.getInstances().size());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
     private static class Utils {
-        public static JsonObject getKeepAliveJsonObject(String verifyCode) {
+        /*public static JsonObject getKeepAliveJsonObject(String verifyCode) {
             JsonObject jsonObject = new JsonObject();
             jsonObject.addProperty("type", "keep-alive");
             jsonObject.addProperty("verify-code", verifyCode);
             return jsonObject;
+        }*/
+
+        public static KeepAlivePacket getKeepAlivePacket(String verifyCode) {
+            return KeepAlivePacket.builder().verifyCode(verifyCode).build();
         }
 
         public static String generateRandomKeepAliveNumber() {
@@ -233,6 +261,7 @@ public class ClientHandler extends Thread {
                 try {
                     Thread.sleep(millis);
                     if (!((Thread) temp_1.getObject()).isAlive() && !isFinished.get()) {
+                        System.out.println("Thread 2 run");
                         ((Thread) temp_1.getObject()).interrupt();
                         isFinished.set(false);
                     }
@@ -252,6 +281,7 @@ public class ClientHandler extends Thread {
                 }
             }
 
+            System.out.println("output = " + output);
             return output.get();
         }
     }
